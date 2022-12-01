@@ -1,0 +1,43 @@
+version: 2.1
+
+orbs:
+  github-cli: circleci/github-cli@2.1.1
+
+jobs:
+  foobar:
+    docker:
+      - image: cimg/base:current
+    steps:
+      - checkout
+  cancel-if-pr-recent:
+    docker:
+      - image: cimg/base:current
+    parameters:
+      since:
+        type: string
+        default: '1 day ago'
+    steps:
+      - github-cli/setup
+      - run: |
+          d=$(date +%Y-%m-%d -d '<< parameters.since >>')
+          echo "export PR_MERGED_SINCE=${d}" >> $BASH_ENV
+      - run: |
+          NUM_PRS=$(gh pr list -R "github.com/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}"\
+              -B $CIRCLE_BRANCH -s merged -S "updated:>=${PR_MERGED_SINCE}" --json "url" | jq -r ".|length")
+          
+          echo "Found ${NUM_PRS} pull requests since << parameters.since >>"
+
+          if [ $NUM_PRS -gt 0 ]; then
+            echo "cancelling current workflow: ${CIRCLE_WORKFLOW_ID}"
+            echo "TODO cancel via https://circleci.com/docs/api/v2/index.html#operation/cancelWorkflow"
+          fi
+
+workflows:
+  scheduled:
+    when:
+      equal: [ scheduled_pipeline, << pipeline.trigger_source>> ]
+    jobs:
+      - cancel-if-pr-recent
+      - foobar:
+          requires:
+            - cancel-if-pr-recent
